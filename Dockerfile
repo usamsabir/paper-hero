@@ -1,25 +1,32 @@
-FROM python:3.10-slim
+FROM python:3.9-slim
 
-#Install cron and git
-RUN apt-get update
-RUN apt-get -y install cron git
+# Step 2: Set environment variables to prevent prompts during package installations
+ENV DEBIAN_FRONTEND=noninteractive
 
-# prepare scripts
-WORKDIR /app/
-COPY ./requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
-COPY ./scripts/ /app/scripts/
-RUN bash scripts/get_aclanthology.sh
-COPY ./src/ /app/src/
-COPY ./index.html /app/index.html
-COPY ./server.py /app/server.py
+# Step 3: Update the package list and install system dependencies including Git
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-# Add the cron job
-RUN crontab -l | { cat; echo "*/10 * * * * bash /app/scripts/clean_tmp.sh"; } | crontab -
-RUN crontab -l | { cat; echo "0 0 * * * bash /app/scripts/get_aclanthology.sh"; } | crontab -
-# Run the command on container startup
-CMD cron
+# Step 4: Set the working directory inside the container
+WORKDIR /paper-hero/
 
-# start service
-EXPOSE 7860
-CMD ["python", "-u", "server.py"]
+# Step 5: Copy the local repository into the Docker image
+COPY . /paper-hero
+
+# Step 6: Install Python dependencies from requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Step 7: Run pytest
+RUN pytest
+
+CMD pytest
+
+# DO NOT CHANGE ANY BELOW CODE
+WORKDIR /
+RUN apt-get update && apt-get install -y bash
+COPY run_tests.sh ./
+RUN chmod +x /run_tests.sh
+ENTRYPOINT ["/bin/bash", "-s"]

@@ -1,3 +1,10 @@
+import json
+from collections import defaultdict
+from typing import Dict, Any
+
+import spacy
+from tqdm import tqdm
+
 from src.interfaces import Paper
 
 
@@ -86,10 +93,82 @@ class SearchAPI:
     def tokenize(self, string: str) -> list[str]:
         return string.lower().split()
 
-    @classmethod
-    def build_paper_list(cls, *args, **kwargs):
-        raise NotImplementedError
 
+    @staticmethod
+    def build_paper_list(json_string: str) -> list[Paper]:
+        """Build a paper list from a JSON string"""
+        paper_data = json.loads(json_string)
+        papers = []
+        for paper in paper_data:
+            # Ensure all required fields are present
+            paper_dict = {
+                'title': paper.get('title', ''),
+                'author': paper.get('author', ''),
+                'abstract': paper.get('abstract', ''),
+                'url': paper.get('url', ''),
+                'doi': paper.get('doi', ''),
+                'venue': paper.get('venue', ''),
+                'year': paper.get('year', 0),
+                'month': paper.get('month', 0)
+            }
+            papers.append(Paper(**paper_dict))
+        return papers
+
+    def advanced_search(
+            self,
+            query: Dict[str, tuple[tuple[str]]],
+            sort_by: str = None,
+            sort_order: str = 'desc',
+            page: int = 1,
+            page_size: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Advanced search with sorting and pagination
+
+        Args:
+            query: A dict of queries on different fields
+            sort_by: Field to sort by (e.g., 'year', 'month', 'venue')
+            sort_order: 'asc' for ascending, 'desc' for descending
+            page: The page number to return (starting from 1)
+            page_size: Number of results per page
+
+        Returns:
+            A dict containing:
+                - 'papers': A list of `Paper` objects for the current page
+                - 'total_results': Total number of papers matching the query
+                - 'page': Current page number
+                - 'total_pages': Total number of pages
+        """
+        results = self.search(query)
+
+        if sort_by:
+            reverse = sort_order.lower() == 'desc'
+            results.sort(key=lambda p: getattr(p, sort_by), reverse=reverse)
+
+        total_results = len(results)
+        total_pages = (total_results + page_size - 1) // page_size
+
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+
+        return {
+            'papers': results[start_index:end_index],
+            'total_results': total_results,
+            'page': page,
+            'total_pages': total_pages
+        }
     @classmethod
-    def build_and_search(cls, *args, **kwargs) -> list[Paper]:
-        raise NotImplementedError
+    def build_and_search(
+            cls,
+            json_string: str,
+            query: Dict[str, tuple[tuple[str]]],
+            sort_by: str = None,
+            sort_order: str = 'desc',
+            page: int = 1,
+            page_size: int = 10
+    ) -> Dict[str, Any]:
+        """Build a paper list from a JSON string and immediately search it with sorting and pagination"""
+        papers = cls.build_paper_list(json_string)
+        api = cls()
+        api.papers = papers
+        return api.advanced_search(query, sort_by, sort_order, page, page_size)
